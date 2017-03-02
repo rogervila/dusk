@@ -3,7 +3,6 @@
 namespace Laravel\Dusk\Concerns;
 
 use Illuminate\Support\Str;
-use Facebook\WebDriver\WebDriverBy;
 use PHPUnit_Framework_Assert as PHPUnit;
 use Facebook\WebDriver\Exception\NoSuchElementException;
 
@@ -50,6 +49,91 @@ trait MakesAssertions
         )['path']);
 
         return $this;
+    }
+
+    /**
+     * Assert that the current URL path matches the given route.
+     *
+     * @param  string  $route
+     * @param  array  $parameters
+     * @return $this
+     */
+    public function assertRouteIs($route, $parameters = [])
+    {
+        return $this->assertPathIs(route($route, $parameters, false));
+    }
+
+    /**
+     * Assert that a query string parameter is present and has a given value.
+     *
+     * @param  string  $name
+     * @param  string  $value
+     * @return $this
+     */
+    public function assertQueryStringHas($name, $value = null)
+    {
+        $output = $this->assertHasQueryStringParameter($name);
+
+        if (is_null($value)) {
+            return $this;
+        }
+
+        PHPUnit::assertEquals(
+            $value, $output[$name],
+            "Query string parameter [{$name}] had value [{$output[$name]}], but expected [{$value}]."
+        );
+
+        return $this;
+    }
+
+    /**
+     * Assert that the given query string parameter is missing.
+     *
+     * @param  string  $name
+     * @return $this
+     */
+    public function assertQueryStringMissing($name)
+    {
+        $parsedUrl = parse_url($this->driver->getCurrentURL());
+
+        if (! array_key_exists('query', $parsedUrl)) {
+            PHPUnit::assertTrue(true);
+            return $this;
+        }
+
+        parse_str($parsedUrl['query'], $output);
+
+        PHPUnit::assertArrayNotHasKey(
+            $name, $output,
+            "Found unexpected query string parameter [{$name}] in [".$this->driver->getCurrentURL()."]."
+        );
+
+        return $this;
+    }
+
+    /**
+     * Assert that the given query string parameter is present.
+     *
+     * @param  string  $name
+     * @return $this
+     */
+    protected function assertHasQueryStringParameter($name)
+    {
+        $parsedUrl = parse_url($this->driver->getCurrentURL());
+
+        PHPUnit::assertArrayHasKey(
+            'query', $parsedUrl,
+            "Did not see expected query string in [".$this->driver->getCurrentURL()."]."
+        );
+
+        parse_str($parsedUrl['query'], $output);
+
+        PHPUnit::assertArrayHasKey(
+            $name, $output,
+            "Did not see expected query string parameter [{$name}] in [".$this->driver->getCurrentURL()."]."
+        );
+
+        return $output;
     }
 
     /**
@@ -165,6 +249,38 @@ trait MakesAssertions
     }
 
     /**
+     * Assert that the given source code is present on the page.
+     *
+     * @param  string  $code
+     * @return $this
+     */
+    public function assertSourceHas($code)
+    {
+        PHPUnit::assertContains(
+            $code, $this->driver->getPageSource(),
+            "Did not find expected source code [{$code}]"
+        );
+
+        return $this;
+    }
+
+    /**
+     * Assert that the given source code is not present on the page.
+     *
+     * @param  string  $code
+     * @return $this
+     */
+    public function assertSourceMissing($code)
+    {
+        PHPUnit::assertNotContains(
+            $code, $this->driver->getPageSource(),
+            "Found unexpected source code [{$code}]"
+        );
+
+        return $this;
+    }
+
+    /**
      * Assert that the given link is visible.
      *
      * @param  string  $link
@@ -216,11 +332,13 @@ trait MakesAssertions
      */
     public function seeLink($link)
     {
+        $this->ensurejQueryIsAvailable();
+
         $selector = trim($this->resolver->format("a:contains('{$link}')"));
 
         $script = <<<JS
-            var link = $("{$selector}");
-            return link.length > 0 && link.is(':visible');
+            var link = jQuery.find("{$selector}");
+            return link.length > 0 && jQuery(link).is(':visible');
 JS;
 
         return $this->driver->executeScript($script);
@@ -273,11 +391,12 @@ JS;
      * Assert that the given checkbox field is checked.
      *
      * @param  string  $field
+     * @param  string  $value
      * @return $this
      */
-    public function assertChecked($field)
+    public function assertChecked($field, $value = null)
     {
-        $element = $this->resolver->resolveForChecking($field);
+        $element = $this->resolver->resolveForChecking($field, $value);
 
         PHPUnit::assertTrue(
             $element->isSelected(),
@@ -291,15 +410,54 @@ JS;
      * Assert that the given checkbox field is not checked.
      *
      * @param  string  $field
+     * @param  string  $value
      * @return $this
      */
-    public function assertNotChecked($field)
+    public function assertNotChecked($field, $value = null)
     {
-        $element = $this->resolver->resolveForChecking($field);
+        $element = $this->resolver->resolveForChecking($field, $value);
 
         PHPUnit::assertFalse(
             $element->isSelected(),
             "Checkbox [{$field}] was unexpectedly checked."
+        );
+
+        return $this;
+    }
+
+    /**
+     * Assert that the given radio field is selected.
+     *
+     * @param  string  $field
+     * @param  string  $value
+     * @return $this
+     */
+    function assertRadioSelected($field, $value)
+    {
+        $element = $this->resolver->resolveForRadioSelection($field, $value);
+
+        PHPUnit::assertTrue(
+            $element->isSelected(),
+            "Expected radio [{$field}] to be selected, but it wasn't."
+        );
+
+        return $this;
+    }
+
+    /**
+     * Assert that the given radio field is not selected.
+     *
+     * @param  string  $field
+     * @param  string  $value
+     * @return $this
+     */
+    public function assertRadioNotSelected($field, $value = null)
+    {
+        $element = $this->resolver->resolveForRadioSelection($field, $value);
+
+        PHPUnit::assertFalse(
+            $element->isSelected(),
+            "Radio [{$field}] was unexpectedly selected."
         );
 
         return $this;
@@ -404,6 +562,21 @@ JS;
         }
 
         PHPUnit::assertTrue($missing, "Saw unexpected element [{$fullSelector}].");
+
+        return $this;
+    }
+
+    /**
+     * Assert that a JavaScript dialog with given message has been opened.
+     *
+     * @param  string  $message
+     * @return $this
+     */
+    public function assertDialogOpened($message)
+    {
+        PHPUnit::assertEquals(
+            $message, $this->driver->switchTo()->alert()->getText()
+        );
 
         return $this;
     }

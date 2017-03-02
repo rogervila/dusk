@@ -13,6 +13,7 @@ class Browser
     use Concerns\InteractsWithAuthentication,
         Concerns\InteractsWithCookies,
         Concerns\InteractsWithElements,
+        Concerns\InteractsWithJavascript,
         Concerns\InteractsWithMouse,
         Concerns\MakesAssertions,
         Concerns\WaitsForElements,
@@ -26,6 +27,20 @@ class Browser
      * @var string
      */
     public static $baseUrl;
+
+    /**
+     * The directory that will contain any screenshots.
+     *
+     * @var string
+     */
+    public static $storeScreenshotsAt;
+
+    /**
+     * The directory that will contain any console logs.
+     *
+     * @var string
+     */
+    public static $storeConsoleLogAt;
 
     /**
      * Get the callback which resolves the default user to authenticate.
@@ -106,6 +121,18 @@ class Browser
     }
 
     /**
+     * Browse to the given route.
+     *
+     * @param  string  $route
+     * @param  array  $parameters
+     * @return $this
+     */
+    public function visitRoute($route, $parameters = [])
+    {
+        return $this->visit(route($route, $parameters));
+    }
+
+    /**
      * Set the current page object.
      *
      * @param  mixed  $page
@@ -175,7 +202,25 @@ class Browser
      */
     public function screenshot($name)
     {
-        $this->driver->takeScreenshot(base_path('tests/Browser/screenshots/'.$name.'.png'));
+        $this->driver->takeScreenshot(
+            sprintf('%s/%s.png', rtrim(static::$storeScreenshotsAt, '/'), $name)
+        );
+
+        return $this;
+    }
+
+    /**
+     * Store the console output with the given name.
+     *
+     * @param  string  $name
+     * @return $this
+     */
+    public function storeConsoleLog($name)
+    {
+        file_put_contents(
+            sprintf('%s/%s.log', rtrim(static::$storeConsoleLogAt, '/'), $name)
+            , json_encode($this->driver->manage()->getLog('browser'), JSON_PRETTY_PRINT)
+        );
 
         return $this;
     }
@@ -203,6 +248,18 @@ class Browser
     }
 
     /**
+     * Ensure that jQuery is available on the page.
+     *
+     * @return void
+     */
+    public function ensurejQueryIsAvailable()
+    {
+        if ($this->driver->executeScript("return window.jQuery == null")) {
+            $this->driver->executeScript(file_get_contents(__DIR__.'/../bin/jquery.js'));
+        }
+    }
+
+    /**
      * Pause for the given amount of milliseconds.
      *
      * @param  int  $milliseconds
@@ -223,6 +280,39 @@ class Browser
     public function quit()
     {
         $this->driver->quit();
+    }
+
+    /**
+     * Tap the browser into a callback.
+     *
+     * @param  \Closure  $callback
+     * @return $this
+     */
+    public function tap($callback)
+    {
+        $callback($this);
+
+        return $this;
+    }
+
+    /**
+     * Dump the content from the last response.
+     *
+     * @return void
+     */
+    public function dump()
+    {
+        dd($this->driver->getPageSource());
+    }
+
+    /**
+     * Stop running tests but leave the browser open.
+     *
+     * @return void
+     */
+    public function stop()
+    {
+        exit();
     }
 
     /**

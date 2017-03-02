@@ -46,6 +46,21 @@ trait InteractsWithElements
     }
 
     /**
+     * Right click the element at the given selector.
+     *
+     * @param  string  $selector
+     * @return $this
+     */
+    public function rightClick($selector)
+    {
+        (new WebDriverActions($this->driver))->contextClick(
+            $this->resolver->findOrFail($selector)
+        )->perform();
+
+        return $this;
+    }
+
+    /**
      * Click the link with the given text.
      *
      * @param  string  $link
@@ -53,9 +68,11 @@ trait InteractsWithElements
      */
     public function clickLink($link)
     {
+        $this->ensurejQueryIsAvailable();
+
         $selector = trim($this->resolver->format("a:contains('{$link}')"));
 
-        $this->driver->executeScript("$(\"{$selector}\")[0].click();");
+        $this->driver->executeScript("jQuery.find(\"{$selector}\")[0].click();");
 
         return $this;
     }
@@ -168,23 +185,29 @@ trait InteractsWithElements
     }
 
     /**
-     * Select the given value of a drop-down field.
+     * Select the given value or random value of a drop-down field.
      *
      * @param  string  $field
-     * @param  stirng  $value
+     * @param  string  $value
      * @return $this
      */
-    public function select($field, $value)
+    public function select($field, $value = null)
     {
         $element = $this->resolver->resolveForSelection($field);
 
         $options = $element->findElements(WebDriverBy::tagName('option'));
 
-        foreach ($options as $option) {
-            if ($option->getAttribute('value') === $value) {
-                $option->click();
+        if (is_null($value)) {
+            $options[array_rand($options)]->click();
+        }
 
-                break;
+        else {
+            foreach ($options as $option) {
+                if ($option->getAttribute('value') === $value) {
+                    $option->click();
+
+                    break;
+                }
             }
         }
 
@@ -195,7 +218,7 @@ trait InteractsWithElements
      * Select the given value of a radio button field.
      *
      * @param  string  $field
-     * @param  stirng  $value
+     * @param  string  $value
      * @return $this
      */
     public function radio($field, $value)
@@ -209,11 +232,12 @@ trait InteractsWithElements
      * Check the given checkbox.
      *
      * @param  string  $field
+     * @param  string  $value
      * @return $this
      */
-    public function check($field)
+    public function check($field, $value = null)
     {
-        $element = $this->resolver->resolveForChecking($field);
+        $element = $this->resolver->resolveForChecking($field, $value);
 
         if (! $element->isSelected()) {
             $element->click();
@@ -226,11 +250,12 @@ trait InteractsWithElements
      * Uncheck the given checkbox.
      *
      * @param  string  $field
+     * @param  string  $value
      * @return $this
      */
-    public function uncheck($field)
+    public function uncheck($field, $value = null)
     {
-        $element = $this->resolver->resolveForChecking($field);
+        $element = $this->resolver->resolveForChecking($field, $value);
 
         if ($element->isSelected()) {
             $element->click();
@@ -298,6 +323,30 @@ trait InteractsWithElements
         (new WebDriverActions($this->driver))->dragAndDrop(
             $this->resolver->findOrFail($from), $this->resolver->findOrFail($to)
         )->perform();
+
+        return $this;
+    }
+
+    /**
+     * Accept a JavaScript dialog.
+     *
+     * @return $this
+     */
+    public function acceptDialog()
+    {
+        $this->driver->switchTo()->alert()->accept();
+
+        return $this;
+    }
+
+    /**
+     * Dismiss a JavaScript dialog.
+     *
+     * @return $this
+     */
+    public function dismissDialog()
+    {
+        $this->driver->switchTo()->alert()->dismiss();
 
         return $this;
     }

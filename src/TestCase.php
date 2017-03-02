@@ -39,6 +39,10 @@ abstract class TestCase extends FoundationTestCase
     {
         Browser::$baseUrl = $this->baseUrl();
 
+        Browser::$storeScreenshotsAt = base_path('tests/Browser/screenshots');
+
+        Browser::$storeConsoleLogAt = base_path('tests/Browser/console');
+
         Browser::$userResolver = function () {
             return $this->user();
         };
@@ -75,6 +79,8 @@ abstract class TestCase extends FoundationTestCase
      *
      * @param  \Closure  $callback
      * @return \Laravel\Dusk\Browser|void
+     * @throws \Exception
+     * @throws \Throwable
      */
     public function browse(Closure $callback)
     {
@@ -91,6 +97,8 @@ abstract class TestCase extends FoundationTestCase
 
             throw $e;
         } finally {
+            $this->storeConsoleLogsFor($browsers);
+
             static::$browsers = $this->closeAllButPrimary($browsers);
         }
     }
@@ -104,20 +112,31 @@ abstract class TestCase extends FoundationTestCase
     protected function createBrowsersFor(Closure $callback)
     {
         if (count(static::$browsers) === 0) {
-            static::$browsers = collect([new Browser($this->createWebDriver())]);
+            static::$browsers = collect([$this->newBrowser($this->createWebDriver())]);
         }
 
         $additional = $this->browsersNeededFor($callback) - 1;
 
         for ($i = 0; $i < $additional; $i++) {
-            static::$browsers->push(new Browser($this->createWebDriver()));
+            static::$browsers->push($this->newBrowser($this->createWebDriver()));
         }
 
         return static::$browsers;
     }
 
     /**
-     * Get the nmber of browsers needed for a given callback.
+     * Create a new Browser instance.
+     *
+     * @param  \Facebook\WebDriver\Remote\RemoteWebDriver  $driver
+     * @return \Laravel\Dusk\Browser
+     */
+    protected function newBrowser($driver)
+    {
+        return new Browser($driver);
+    }
+
+    /**
+     * Get the number of browsers needed for a given callback.
      *
      * @param  \Closure  $callback
      * @return int
@@ -137,6 +156,19 @@ abstract class TestCase extends FoundationTestCase
     {
         $browsers->each(function ($browser, $key) {
             $browser->screenshot('failure-'.$this->getName().'-'.$key);
+        });
+    }
+
+    /**
+     * Store the console output for the given browsers.
+     *
+     * @param  \Illuminate\Support\Collection  $browsers
+     * @return void
+     */
+    protected function storeConsoleLogsFor($browsers)
+    {
+        $browsers->each(function ($browser, $key) {
+            $browser->storeConsoleLog($this->getName().'-'.$key);
         });
     }
 
@@ -203,6 +235,7 @@ abstract class TestCase extends FoundationTestCase
      * Get a callback that returns the default user to authenticate.
      *
      * @return \Closure
+     * @throws \Exception
      */
     protected function user()
     {
